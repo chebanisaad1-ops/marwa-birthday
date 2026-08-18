@@ -158,9 +158,11 @@
 
   /* ----------------------------------------------------------
      Music
-     Uses the single <audio id="bgMusic"> element from index.html.
-     Autoplay is attempted on load; if the browser blocks it,
-     the first user interaction starts the music.
+     Invisible to the user. Uses the single <audio id="bgMusic">
+     element from index.html. Autoplay is attempted on load;
+     if the browser blocks it, the first touch/click anywhere
+     starts the music. The song then continues for the whole
+     experience (it is never paused or recreated on scene change).
      ---------------------------------------------------------- */
   var audio = document.getElementById("bgMusic");
   audio.loop = true;
@@ -170,8 +172,6 @@
 
   var playing = false;
   var fadeTimer = null;
-  var autoplayBlocked = false;
-  var userInteracted = false;
 
   function setVolume(v) { audio.volume = Math.max(0, Math.min(1, v)); }
 
@@ -192,83 +192,53 @@
     if (p && typeof p.then === "function") {
       p.then(function () {
         playing = true;
-        autoplayBlocked = false;
-        $("music-btn").classList.add("playing");
-        $("music-hint").classList.remove("show");
+        detachUnlockListeners();
         fadeUp();
       }).catch(function () {
         playing = false;
-        $("music-btn").classList.remove("playing");
-        $("music-btn").classList.add("visible");
-        autoplayBlocked = true;
-        $("music-hint").classList.add("show");
       });
     }
   }
 
-  function fadeOut() {
-    if (!playing && audio.paused) return;
-    clearInterval(fadeTimer);
-    var v = audio.volume;
-    fadeTimer = setInterval(function () {
-      v -= 0.04;
-      if (v <= 0) {
-        clearInterval(fadeTimer);
-        audio.pause();
-        playing = false;
-        $("music-btn").classList.remove("playing");
-      } else {
-        setVolume(v);
-      }
-    }, 90);
+  /* One-time unlock: the first user interaction anywhere on the
+     page starts the music. Listeners are removed once playback
+     actually begins so they never fire again. */
+  var unlockEvts = ["pointerdown", "touchstart", "click"];
+  var unlockHandlers = [];
+
+  function attachUnlockListeners() {
+    unlockEvts.forEach(function (evt) {
+      var handler = function () { playMusic(); };
+      window.addEventListener(evt, handler, { passive: true });
+      unlockHandlers.push({ evt: evt, handler: handler });
+    });
   }
 
-  function toggleMusic() {
-    if (playing && !audio.paused) {
-      fadeOut();
-    } else {
-      playMusic();
-    }
+  function detachUnlockListeners() {
+    unlockHandlers.forEach(function (l) {
+      window.removeEventListener(l.evt, l.handler);
+    });
+    unlockHandlers = [];
   }
 
-  /* If the file cannot be loaded, keep the UI honest and tell the
-     user how to fix it instead of leaving a silent broken state. */
+  /* If the file cannot be loaded, log once so it is easy to
+     diagnose. No UI is shown; nothing breaks. */
+  var warned = false;
   audio.addEventListener("error", function () {
-    playing = false;
-    $("music-btn").classList.remove("playing");
-    $("music-hint").classList.add("show");
-    if (!autoplayBlocked) {
+    if (!warned) {
+      warned = true;
       console.warn("Music not playing: music/birthday.mp3 is missing or unreadable. Place the audio file at music/birthday.mp3 next to index.html.");
     }
-    autoplayBlocked = true;
   });
 
-  var musicBtn = $("music-btn");
-  musicBtn.addEventListener("click", toggleMusic);
-  musicBtn.addEventListener("keydown", function (e) {
-    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleMusic(); }
-  });
-
-  function unlockOnFirstInteraction() {
-    userInteracted = true;
-    if (autoplayBlocked || (!playing && audio.paused)) {
-      playMusic();
-    }
-  }
-
-  /* Attempt autoplay immediately (this script sits at the end of
-     <body>, so the DOM is already ready) and once more after the
-     page has fully loaded, as a second chance on slower devices. */
+  /* Attempt autoplay right away (DOM is ready — script is at the
+     end of <body>) and once more after full load as a second
+     chance on slower devices. The unlock listeners stay armed in
+     case the browser blocks autoplay. */
+  attachUnlockListeners();
   playMusic();
   window.addEventListener("load", function () {
-    if (!playing && !userInteracted) playMusic();
-  });
-
-  /* If autoplay is blocked, the very first touch/click/key press
-     anywhere on the page starts the music. Listeners stay active
-     until playback actually starts. */
-  ["pointerdown", "touchstart", "click", "keydown"].forEach(function (evt) {
-    window.addEventListener(evt, unlockOnFirstInteraction, { passive: true });
+    if (!playing) playMusic();
   });
 
   /* ----------------------------------------------------------
@@ -347,7 +317,6 @@
     if (busy) return;
     if (!playing) playMusic();
     busy = true;
-    $("music-btn").classList.add("visible");
 
     confetti(50);
     burstHearts(14);
@@ -552,11 +521,6 @@
 
   showScene("scene-opening");
   playOpening();
-
-  // Show the music control shortly after load (subtle, top-right)
-  setTimeout(function () {
-    $("music-btn").classList.add("visible");
-  }, 6000);
 
   /* Continuous gentle hearts on later scenes */
   if (!reduceMotion) {
