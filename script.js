@@ -227,7 +227,7 @@
   audio.addEventListener("error", function () {
     if (!warned) {
       warned = true;
-      console.warn("Music not playing: music/birthday.mp3 is missing or unreadable. Place the audio file at music/birthday.mp3 next to index.html.");
+      console.warn("Music not playing: music/sub_clair-happy-birthday-578363.mp3 is missing or unreadable. Place the audio file at music/sub_clair-happy-birthday-578363.mp3 next to index.html.");
     }
   });
 
